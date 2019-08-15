@@ -96,7 +96,9 @@
 
     for (let [key, value] of Object.entries(instance.exports)) {
       if (typeof value === 'function') {
-        value = wrapWasmExport(value);
+        if (!key.startsWith('asyncify_')) {
+          value = wrapWasmExport(value);
+        }
         setFnName(value, `exports.${key}`);
       }
       exports[key] = value;
