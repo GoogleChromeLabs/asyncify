@@ -44,9 +44,9 @@
           return 0;
         }
         case 'Rewinding': {
-          exports.asyncify_stop_rewind();
           let { value } = asyncState;
           asyncState = { type: 'None' };
+          exports.asyncify_stop_rewind();
           return value;
         }
         default:
@@ -62,15 +62,17 @@
       let result = fn(...args);
 
       while (asyncState.type === 'Unwinding') {
-        exports.asyncify_stop_unwind();
         let { promise } = asyncState;
+        asyncState = { type: 'None' };
+        exports.asyncify_stop_unwind();
         asyncState = { type: 'Waiting' };
         let value = await promise;
+        asyncState = { type: 'None' };
+        exports.asyncify_start_rewind(DATA_ADDR);
         asyncState = {
           type: 'Rewinding',
           value
         };
-        exports.asyncify_start_rewind(DATA_ADDR);
         result = fn();
       }
 
@@ -94,9 +96,7 @@
 
     for (let [key, value] of Object.entries(instance.exports)) {
       if (typeof value === 'function') {
-        if (!key.startsWith('asyncify_')) {
-          value = wrapWasmExport(value);
-        }
+        value = wrapWasmExport(value);
         setFnName(value, `exports.${key}`);
       }
       exports[key] = value;
