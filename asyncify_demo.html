@@ -1,0 +1,113 @@
+<dialog id="promptDialog">
+  10 + <input type="number" id="number" /><input
+    type="button"
+    value="="
+    id="closeDialog"
+  />
+</dialog>
+
+<script>
+  const dialogElem = document.getElementById('promptDialog');
+  const numberElem = document.getElementById('number');
+  const closeDialogElem = document.getElementById('closeDialog');
+
+  closeDialogElem.onclick = () => dialogElem.close();
+
+  function asyncPrompt() {
+    return new Promise(resolve => {
+      dialogElem.onclose = () => resolve(numberElem.valueAsNumber);
+      dialogElem.showModal();
+    });
+  }
+
+  const DATA_ADDR = 16;
+  let exports;
+  let asyncState = { type: 'None' };
+
+  function invalidAsyncState() {
+    throw new Error(`Invalid async state ${asyncState.type}`);
+  }
+
+  function setFnName(fn, name) {
+    return Object.defineProperty(fn, 'name', { value: name });
+  }
+
+  function wrapWasmImport(fn) {
+    return setFnName((...args) => {
+      switch (asyncState.type) {
+        case 'None': {
+          exports.asyncify_start_unwind(DATA_ADDR);
+          asyncState = {
+            type: 'Unwinding',
+            promise: fn(...args)
+          };
+          return 0;
+        }
+        case 'Rewinding': {
+          exports.asyncify_stop_rewind();
+          let { value } = asyncState;
+          asyncState = { type: 'None' };
+          return value;
+        }
+        default:
+          invalidAsyncState();
+      }
+    }, `imports.${fn.name}`);
+  }
+
+  function wrapWasmExport(fn) {
+    return async (...args) => {
+      if (asyncState.type !== 'None') invalidAsyncState();
+
+      let result = fn(...args);
+
+      while (asyncState.type === 'Unwinding') {
+        exports.asyncify_stop_unwind();
+        let { promise } = asyncState;
+        asyncState = { type: 'Waiting' };
+        let value = await promise;
+        asyncState = {
+          type: 'Rewinding',
+          value
+        };
+        exports.asyncify_start_rewind(DATA_ADDR);
+        result = fn();
+      }
+
+      if (asyncState.type !== 'None') invalidAsyncState();
+
+      return result;
+    };
+  }
+
+  (async () => {
+    let { instance } = await WebAssembly.instantiateStreaming(
+      fetch('./asyncify_demo_rs.wasm'),
+      {
+        env: {
+          prompt: wrapWasmImport(asyncPrompt)
+        }
+      }
+    );
+
+    exports = {};
+
+    for (let [key, value] of Object.entries(instance.exports)) {
+      if (typeof value === 'function') {
+        if (!key.startsWith('asyncify_')) {
+          value = wrapWasmExport(value);
+        }
+        setFnName(value, `exports.${key}`);
+      }
+      exports[key] = value;
+    }
+
+    {
+      const view = new Int32Array(exports.memory.buffer, DATA_ADDR);
+      view[0] = DATA_ADDR + 8;
+      view[1] = 512;
+    }
+
+    console.log(await exports.add(10));
+  })();
+</script>
