@@ -1,5 +1,9 @@
 const DATA_ADDR = 16;
 
+function isPromise(obj) {
+  return !!obj && (typeof obj === 'object' || typeof obj === 'function') && typeof obj.then === 'function';
+}
+
 export default class Asyncify {
   constructor() {
     this.state = { type: 'Loading' };
@@ -18,10 +22,14 @@ export default class Asyncify {
     return (...args) => {
       switch (this.state.type) {
         case 'None': {
+          let value = fn(...args);
+          if (!isPromise(value)) {
+            return value;
+          }
           this.exports.asyncify_start_unwind(DATA_ADDR);
           this.state = {
             type: 'Unwinding',
-            promise: fn(...args)
+            promise: value
           };
           return 0;
         }
