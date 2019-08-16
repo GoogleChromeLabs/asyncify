@@ -6,7 +6,9 @@
   />
 </dialog>
 
-<script>
+<script type="module">
+  import Asyncify from './asyncify.js';
+
   const dialogElem = document.getElementById('promptDialog');
   const numberElem = document.getElementById('number');
   const closeDialogElem = document.getElementById('closeDialog');
@@ -20,95 +22,19 @@
     });
   }
 
-  const DATA_ADDR = 16;
-  let exports;
-  let asyncState = { type: 'None' };
-
-  function invalidAsyncState() {
-    throw new Error(`Invalid async state ${asyncState.type}`);
-  }
-
-  function setFnName(fn, name) {
-    return Object.defineProperty(fn, 'name', { value: name });
-  }
-
-  function wrapWasmImport(fn) {
-    return setFnName((...args) => {
-      switch (asyncState.type) {
-        case 'None': {
-          exports.asyncify_start_unwind(DATA_ADDR);
-          asyncState = {
-            type: 'Unwinding',
-            promise: fn(...args)
-          };
-          return 0;
-        }
-        case 'Rewinding': {
-          let { value } = asyncState;
-          asyncState = { type: 'None' };
-          exports.asyncify_stop_rewind();
-          return value;
-        }
-        default:
-          invalidAsyncState();
-      }
-    }, `imports.${fn.name}`);
-  }
-
-  function wrapWasmExport(fn) {
-    return async (...args) => {
-      if (asyncState.type !== 'None') invalidAsyncState();
-
-      let result = fn(...args);
-
-      while (asyncState.type === 'Unwinding') {
-        let { promise } = asyncState;
-        asyncState = { type: 'None' };
-        exports.asyncify_stop_unwind();
-        asyncState = { type: 'Waiting' };
-        let value = await promise;
-        asyncState = { type: 'None' };
-        exports.asyncify_start_rewind(DATA_ADDR);
-        asyncState = {
-          type: 'Rewinding',
-          value
-        };
-        result = fn();
-      }
-
-      if (asyncState.type !== 'None') invalidAsyncState();
-
-      return result;
-    };
-  }
-
   (async () => {
+    let asyncify = new Asyncify();
+
     let { instance } = await WebAssembly.instantiateStreaming(
       fetch('./asyncify_demo_rs.wasm'),
-      {
+      asyncify.wrapImports({
         env: {
-          prompt: wrapWasmImport(asyncPrompt)
+          prompt: asyncPrompt
         }
-      }
+      })
     );
 
-    exports = {};
-
-    for (let [key, value] of Object.entries(instance.exports)) {
-      if (typeof value === 'function') {
-        if (!key.startsWith('asyncify_')) {
-          value = wrapWasmExport(value);
-        }
-        setFnName(value, `exports.${key}`);
-      }
-      exports[key] = value;
-    }
-
-    {
-      const view = new Int32Array(exports.memory.buffer, DATA_ADDR);
-      view[0] = DATA_ADDR + 8;
-      view[1] = 512;
-    }
+    let exports = asyncify.wrapExports(instance.exports);
 
     console.log(await exports.add(10));
   })();
