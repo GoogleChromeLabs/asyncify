@@ -1,10 +1,14 @@
 const DATA_ADDR = 16;
 
 function isPromise(obj) {
-  return !!obj && (typeof obj === 'object' || typeof obj === 'function') && typeof obj.then === 'function';
+  return (
+    !!obj &&
+    (typeof obj === 'object' || typeof obj === 'function') &&
+    typeof obj.then === 'function'
+  );
 }
 
-export default class Asyncify {
+class Asyncify {
   constructor() {
     this.state = { type: 'Loading' };
     this.exports = {};
@@ -14,11 +18,7 @@ export default class Asyncify {
     throw new Error(`Invalid async state ${this.state.type}`);
   }
 
-  wrapImport(fn) {
-    if (typeof fn !== 'function') {
-      return fn;
-    }
-
+  wrapImportFn(fn) {
     return (...args) => {
       switch (this.state.type) {
         case 'None': {
@@ -49,7 +49,7 @@ export default class Asyncify {
     for (let importName in module) {
       let value = module[importName];
       if (typeof value === 'function') {
-        module[importName] = this.wrapImport(value);
+        module[importName] = this.wrapImportFn(value);
       }
     }
 
@@ -66,11 +66,7 @@ export default class Asyncify {
     return imports;
   }
 
-  wrapExport(fn) {
-    if (typeof fn !== 'function') {
-      return fn;
-    }
-
+  wrapExportFn(fn) {
     return async (...args) => {
       if (this.state.type !== 'None') {
         this.invalidState();
@@ -107,7 +103,7 @@ export default class Asyncify {
     for (let exportName in exports) {
       let value = exports[exportName];
       if (typeof value === 'function' && !exportName.startsWith('asyncify_')) {
-        value = this.wrapExport(value);
+        value = this.wrapExportFn(value);
       }
       newExports[exportName] = value;
     }
@@ -117,6 +113,11 @@ export default class Asyncify {
     return newExports;
   }
 
+  wrapInstance(instance) {
+    instance._exports = this.wrapExports(instance.exports);
+    return Object.setPrototypeOf(instance, Instance.prototype);;
+  }
+
   init() {
     const view = new Int32Array(this.exports.memory.buffer, DATA_ADDR);
     view[0] = DATA_ADDR + 8;
@@ -124,4 +125,38 @@ export default class Asyncify {
 
     this.state = { type: 'None' };
   }
+}
+
+export class Instance extends WebAssembly.Instance {
+  constructor(module, imports) {
+    let state = new Asyncify();
+    super(module, state.wrapImports(imports));
+    this._exports = state.wrapExports(super.exports);
+  }
+
+  get exports() {
+    return this._exports;
+  }
+}
+
+Object.defineProperty(Instance.prototype, 'exports', { enumerable: true });
+
+export async function instantiate(source, imports) {
+  let state = new Asyncify();
+  let result = await WebAssembly.instantiate(
+    source,
+    state.wrapImports(imports)
+  );
+  state.wrapInstance(result.instance);
+  return result;
+}
+
+export async function instantiateStreaming(source, imports) {
+  let state = new Asyncify();
+  let result = await WebAssembly.instantiateStreaming(
+    source,
+    state.wrapImports(imports)
+  );
+  state.wrapInstance(result.instance);
+  return result;
 }

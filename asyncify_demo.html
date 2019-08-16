@@ -7,8 +7,6 @@
 </dialog>
 
 <script type="module">
-  import Asyncify from './asyncify.js';
-
   const dialogElem = document.getElementById('promptDialog');
   const numberElem = document.getElementById('number');
   const closeDialogElem = document.getElementById('closeDialog');
@@ -22,20 +20,18 @@
     });
   }
 
-  (async () => {
-    let asyncify = new Asyncify();
+  import { instantiateStreaming } from './asyncify.js';
 
-    let { instance } = await WebAssembly.instantiateStreaming(
+  (async () => {
+    let { instance } = await instantiateStreaming(
       fetch('./asyncify_demo_rs.wasm'),
-      asyncify.wrapImports({
+      {
         env: {
           prompt: asyncPrompt
         }
-      })
+      }
     );
 
-    let exports = asyncify.wrapExports(instance.exports);
-
-    console.log(await exports.add(10));
+    console.log(await instance.exports.add(10));
   })();
 </script>
