@@ -115,7 +115,7 @@ class Asyncify {
 
   wrapInstance(instance) {
     instance._exports = this.wrapExports(instance.exports);
-    return Object.setPrototypeOf(instance, Instance.prototype);;
+    return Object.setPrototypeOf(instance, Instance.prototype);
   }
 
   init() {
@@ -131,7 +131,7 @@ export class Instance extends WebAssembly.Instance {
   constructor(module, imports) {
     let state = new Asyncify();
     super(module, state.wrapImports(imports));
-    this._exports = state.wrapExports(super.exports);
+    state.wrapInstance(this);
   }
 
   get exports() {
