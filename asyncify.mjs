@@ -46,24 +46,29 @@ class Asyncify {
   }
 
   wrapModuleImports(module) {
+    let newModule = {};
+
     for (let importName in module) {
       let value = module[importName];
       if (typeof value === 'function') {
-        module[importName] = this.wrapImportFn(value);
+        value = this.wrapImportFn(value);
       }
+      newModule[importName] = value;
     }
 
-    return module;
+    return newModule;
   }
 
   wrapImports(imports) {
     if (imports === undefined) return;
 
+    let newImports = {};
+
     for (let moduleName in imports) {
-      this.wrapModuleImports(imports[moduleName]);
+      newImports[moduleName] = this.wrapModuleImports(imports[moduleName]);
     }
 
-    return imports;
+    return newImports;
   }
 
   wrapExportFn(fn) {
