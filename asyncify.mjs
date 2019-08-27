@@ -84,8 +84,12 @@ class Asyncify {
         this.state = { type: 'None' };
         this.exports.asyncify_stop_unwind();
         this.state = { type: 'Waiting' };
-        let value = await promise;
-        this.state = { type: 'None' };
+        let value;
+        try {
+          value = await promise;
+        } finally {
+          this.state = { type: 'None' };
+        }
         this.exports.asyncify_start_rewind(DATA_ADDR);
         this.state = {
           type: 'Rewinding',
