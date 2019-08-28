@@ -4,7 +4,7 @@ extern {
 }
 
 #[no_mangle]
-pub unsafe extern fn run() {
+pub unsafe extern fn run() -> bool {
 	let start = get_time();
 	sleep(100);
 	let end = get_time();
