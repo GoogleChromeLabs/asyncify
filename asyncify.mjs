@@ -1,4 +1,5 @@
 const DATA_ADDR = 16;
+const WRAPPED_EXPORTS = new WeakMap();
 
 function isPromise(obj) {
   return (
@@ -126,7 +127,7 @@ class Asyncify {
   }
 
   wrapInstance(instance) {
-    instance._exports = this.wrapExports(instance.exports);
+    WRAPPED_EXPORTS.set(instance, this.wrapExports(instance.exports));
     return Object.setPrototypeOf(instance, Instance.prototype);
   }
 
@@ -147,7 +148,7 @@ export class Instance extends WebAssembly.Instance {
   }
 
   get exports() {
-    return this._exports;
+    return WRAPPED_EXPORTS.get(this);
   }
 }
 
