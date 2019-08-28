@@ -8,7 +8,8 @@
     "example": "example"
   },
   "scripts": {
-    "test": "node --experimental-modules test/index.mjs"
+    "example": "node --experimental-modules --no-warnings example/node/index.mjs",
+    "test": "node --experimental-modules --no-warnings test/index.mjs"
   },
   "repository": {
     "type": "git",

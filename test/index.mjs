@@ -4,6 +4,10 @@ import { Instance } from '../asyncify.mjs';
 import { promisify } from 'util';
 import assert from 'assert';
 
+process.on('unhandledRejection', err => {
+  throw err;
+});
+
 const wasmContents = readFileSync(
   fileURLToPath(`${import.meta.url}/../test.wasm`)
 );
@@ -15,7 +19,4 @@ const wasmInstance = new Instance(wasmModule, {
   }
 });
 
-wasmInstance.exports
-  .run()
-  .then(res => assert.strictEqual(res, 1))
-  .catch(() => process.exit(1));
+wasmInstance.exports.run().then(res => assert.strictEqual(res, 1));
