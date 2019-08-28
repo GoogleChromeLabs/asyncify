@@ -114,7 +114,10 @@ class Asyncify {
       if (typeof value === 'function' && !exportName.startsWith('asyncify_')) {
         value = this.wrapExportFn(value);
       }
-      newExports[exportName] = value;
+      Object.defineProperty(newExports, exportName, {
+        enumerable: true,
+        value
+      });
     }
 
     this.init(newExports);
