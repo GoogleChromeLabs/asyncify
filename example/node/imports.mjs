@@ -17,8 +17,8 @@ export async function read_number() {
   rl.pause();
 
   let resNumber = res | 0;
-  if (resNumber != res) {
-    throw new Error('Invalid number.');
+  if (resNumber.toString() !== res) {
+    throw new Error('Invalid integer.');
   }
   return resNumber;
 }
