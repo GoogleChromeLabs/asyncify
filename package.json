@@ -1,0 +1,30 @@
+{
+  "name": "asyncify-wasm",
+  "version": "1.0.0",
+  "description": "Standalone Asyncify helper for Binaryen",
+  "type": "module",
+  "main": "asyncify.mjs",
+  "directories": {
+    "example": "example"
+  },
+  "scripts": {
+    "test": "node --experimental-modules test/index.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/GoogleChromeLabs/asyncify.git"
+  },
+  "keywords": [
+    "asyncify",
+    "binaryen",
+    "webassembly",
+    "wasm",
+    "emscripten"
+  ],
+  "author": "Ingvar Stepanyan <rreverser@google.com>",
+  "license": "Apache-2.0",
+  "bugs": {
+    "url": "https://github.com/GoogleChromeLabs/asyncify/issues"
+  },
+  "homepage": "https://github.com/GoogleChromeLabs/asyncify#readme"
+}
