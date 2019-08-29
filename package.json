@@ -27,5 +27,8 @@
   "bugs": {
     "url": "https://github.com/GoogleChromeLabs/asyncify/issues"
   },
-  "homepage": "https://github.com/GoogleChromeLabs/asyncify#readme"
+  "homepage": "https://github.com/GoogleChromeLabs/asyncify#readme",
+  "devDependencies": {
+    "binaryen": "^89.0.0"
+  }
 }

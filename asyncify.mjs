@@ -12,7 +12,7 @@ function isPromise(obj) {
 class Asyncify {
   constructor() {
     this.state = { type: 'Loading' };
-    this.exports = {};
+    this.exports = null;
   }
 
   invalidState() {
@@ -73,7 +73,13 @@ class Asyncify {
   }
 
   wrapExportFn(fn) {
-    return async (...args) => {
+    let newExport = WRAPPED_EXPORTS.get(fn);
+
+    if (newExport !== undefined) {
+      return newExport;
+    }
+
+    newExport = async (...args) => {
       if (this.state.type !== 'None') {
         this.invalidState();
       }
@@ -105,10 +111,20 @@ class Asyncify {
 
       return result;
     };
+
+    WRAPPED_EXPORTS.set(fn, newExport);
+
+    return newExport;
   }
 
   wrapExports(exports) {
-    let newExports = this.exports;
+    let newExports = WRAPPED_EXPORTS.get(exports);
+
+    if (newExports !== undefined) {
+      return newExports;
+    }
+
+    newExports = Object.create(null);
 
     for (let exportName in exports) {
       let value = exports[exportName];
@@ -121,22 +137,23 @@ class Asyncify {
       });
     }
 
-    this.init(newExports);
+    WRAPPED_EXPORTS.set(exports, newExports);
 
     return newExports;
   }
 
-  wrapInstance(instance) {
-    WRAPPED_EXPORTS.set(instance, this.wrapExports(instance.exports));
-    return Object.setPrototypeOf(instance, Instance.prototype);
-  }
+  init(instance) {
+    const { exports } = instance;
 
-  init() {
-    const view = new Int32Array(this.exports.memory.buffer, DATA_ADDR);
+    const view = new Int32Array(exports.memory.buffer, DATA_ADDR);
     view[0] = DATA_ADDR + 8;
     view[1] = 512;
 
     this.state = { type: 'None' };
+
+    this.exports = this.wrapExports(exports);
+
+    Object.setPrototypeOf(instance, Instance.prototype);
   }
 }
 
@@ -144,11 +161,11 @@ export class Instance extends WebAssembly.Instance {
   constructor(module, imports) {
     let state = new Asyncify();
     super(module, state.wrapImports(imports));
-    state.wrapInstance(this);
+    state.init(this);
   }
 
   get exports() {
-    return WRAPPED_EXPORTS.get(this);
+    return WRAPPED_EXPORTS.get(super.exports);
   }
 }
 
@@ -160,7 +177,7 @@ export async function instantiate(source, imports) {
     source,
     state.wrapImports(imports)
   );
-  state.wrapInstance(result.instance);
+  state.init(result.instance);
   return result;
 }
 
@@ -170,6 +187,6 @@ export async function instantiateStreaming(source, imports) {
     source,
     state.wrapImports(imports)
   );
-  state.wrapInstance(result.instance);
+  state.init(result.instance);
   return result;
 }
