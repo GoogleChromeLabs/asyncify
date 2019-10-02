@@ -16,6 +16,9 @@
     "type": "git",
     "url": "git+https://github.com/GoogleChromeLabs/asyncify.git"
   },
+  "files": [
+    "dist/asyncify.*"
+  ],
   "keywords": [
     "asyncify",
     "binaryen",
