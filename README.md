@@ -33,11 +33,11 @@ For example:
 ```js
 let { instance } = await Asyncify.instantiateStreaming(fetch('./out.wasm'), {
   get_resource_text: async url => {
-    let response = await fetch(url);
+    let response = await fetch(readWasmString(instance, url));
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
-    return response.text();
+    return passStringToWasm(instance, await response.text());
   }
 });
 
