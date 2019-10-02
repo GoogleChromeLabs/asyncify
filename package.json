@@ -2,12 +2,13 @@
   "name": "asyncify-wasm",
   "version": "1.0.0",
   "description": "Standalone Asyncify helper for Binaryen",
-  "type": "module",
-  "main": "asyncify.mjs",
+  "main": "dist/asyncify.cjs",
+  "module": "dist/asyncify.mjs",
   "directories": {
     "example": "example"
   },
   "scripts": {
+    "prepublish": "rollup -c",
     "example": "node --experimental-modules --no-warnings example/node/index.mjs",
     "test": "node --experimental-modules --no-warnings test/index.mjs"
   },
@@ -29,6 +30,8 @@
   },
   "homepage": "https://github.com/GoogleChromeLabs/asyncify#readme",
   "devDependencies": {
-    "binaryen": "^89.0.0"
+    "binaryen": "^89.0.0",
+    "rollup": "^1.22.0",
+    "rollup-plugin-terser": "^5.1.2"
   }
 }
