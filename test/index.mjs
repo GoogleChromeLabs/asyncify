@@ -37,7 +37,7 @@ binaryenModule.optimize();
 const wasmContents = binaryenModule.emitBinary();
 
 const wasmModule = new WebAssembly.Module(wasmContents);
-const { run, run2, table } = new Asyncify.Instance(wasmModule, {
+const { run, run2 } = new Asyncify.Instance(wasmModule, {
   env: {
     get_time: Date.now,
     sleep: promisify(setTimeout)
@@ -49,3 +49,5 @@ run().then(res => assert.strictEqual(res, 1));
 
 // Ensure that referential equality between exports is preserved for async wrappers.
 assert.strictEqual(run, run2);
+
+console.log('OK');
