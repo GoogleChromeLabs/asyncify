@@ -158,10 +158,12 @@ class Asyncify {
     return newExports;
   }
 
-  init(instance) {
+  init(instance, imports) {
     const { exports } = instance;
 
-    const view = new Int32Array(exports.memory.buffer, DATA_ADDR);
+    const memory = exports.memory || (imports.env && imports.env.memory);
+
+    const view = new Int32Array(memory.buffer, DATA_ADDR);
     view[0] = DATA_ADDR + 8;
     view[1] = 512;
 
@@ -177,7 +179,7 @@ export class Instance extends WebAssembly.Instance {
   constructor(module, imports) {
     let state = new Asyncify();
     super(module, state.wrapImports(imports));
-    state.init(this);
+    state.init(this, imports);
   }
 
   get exports() {
@@ -206,6 +208,6 @@ export async function instantiateStreaming(source, imports) {
     source,
     state.wrapImports(imports)
   );
-  state.init(result.instance);
+  state.init(result.instance, imports);
   return result;
 }

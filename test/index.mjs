@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import { readFileSync } from 'fs';
+import { promises as fsp } from 'fs';
 import { fileURLToPath } from 'url';
 import { promisify } from 'util';
 import assert from 'assert';
@@ -25,29 +25,37 @@ process.on('unhandledRejection', err => {
   throw err;
 });
 
-const src = readFileSync(
-  fileURLToPath(`${import.meta.url}/../test.wat`),
-  'utf-8'
-);
-
-const binaryenModule = binaryen.parseText(src);
-binaryenModule.runPasses(['asyncify']);
-binaryenModule.optimize();
-
-const wasmContents = binaryenModule.emitBinary();
-
-const wasmModule = new WebAssembly.Module(wasmContents);
-const { run, run2 } = new Asyncify.Instance(wasmModule, {
+const importObject = {
   env: {
+    memory: new WebAssembly.Memory({ initial: 16 }),
     get_time: Date.now,
     sleep: promisify(setTimeout)
   }
-}).exports;
+};
 
-// Check that the export works as an asynchronous function.
-run().then(res => assert.strictEqual(res, 1));
+async function runWithWat(path) {
+  const src = await fsp.readFile(
+    fileURLToPath(`${import.meta.url}/../${path}`),
+    'utf-8'
+  );
 
-// Ensure that referential equality between exports is preserved for async wrappers.
-assert.strictEqual(run, run2);
+  const binaryenModule = binaryen.parseText(src);
+  binaryenModule.runPasses(['asyncify']);
+  binaryenModule.optimize();
 
-console.log('OK');
+  const wasmContents = binaryenModule.emitBinary();
+
+  const wasmModule = new WebAssembly.Module(wasmContents);
+  const { run, run2 } = new Asyncify.Instance(wasmModule, importObject).exports;
+
+  // Check that the export works as an asynchronous function.
+  assert.strictEqual(await run(), 1);
+
+  // Ensure that referential equality between exports is preserved for async wrappers.
+  assert.strictEqual(run, run2);
+
+  console.log(`${path} - OK`);
+}
+
+runWithWat('mem-export.wat');
+runWithWat('mem-import.wat');
