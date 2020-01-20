@@ -193,7 +193,10 @@ export async function instantiate(source, imports) {
     source,
     state.wrapImports(imports)
   );
-  state.init(result.instance);
+  state.init(
+    result instanceof WebAssembly.Instance ? result : result.instance,
+    imports
+  );
   return result;
 }
 
