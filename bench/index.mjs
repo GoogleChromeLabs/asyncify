@@ -27,7 +27,6 @@ import * as Asyncify from 'https://unpkg.com/asyncify-wasm@1.0.2/dist/asyncify.m
 
 function createImportObject() {
   let counter = 1000;
-  let logged = false;
 
   return {
     env: {
