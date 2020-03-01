@@ -134,13 +134,7 @@ class Asyncify {
   }
 
   wrapExports(exports) {
-    let newExports = WRAPPED_EXPORTS.get(exports);
-
-    if (newExports !== undefined) {
-      return newExports;
-    }
-
-    newExports = Object.create(null);
+    let newExports = Object.create(null);
 
     for (let exportName in exports) {
       let value = exports[exportName];
