@@ -31,7 +31,7 @@ function createImportObject() {
   return {
     env: {
       async sleep(timeout) {
-        await new Promise(resolve => setTimeout(resolve, timeout));
+        // await new Promise(resolve => setTimeout(resolve, timeout));
         return counter--;
       }
     }
