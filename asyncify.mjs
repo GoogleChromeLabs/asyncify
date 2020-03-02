@@ -25,6 +25,12 @@ function isPromise(obj) {
   );
 }
 
+function proxyGet(obj, transform) {
+  return new Proxy(obj, {
+    get: (obj, name) => transform(obj[name])
+  });
+}
+
 class Asyncify {
   constructor() {
     this.state = { type: 'Loading' };
@@ -63,29 +69,20 @@ class Asyncify {
   }
 
   wrapModuleImports(module) {
-    let newModule = {};
-
-    for (let importName in module) {
-      let value = module[importName];
+    return proxyGet(module, value => {
       if (typeof value === 'function') {
-        value = this.wrapImportFn(value);
+        return this.wrapImportFn(value);
       }
-      newModule[importName] = value;
-    }
-
-    return newModule;
+      return value;
+    });
   }
 
   wrapImports(imports) {
     if (imports === undefined) return;
 
-    let newImports = {};
-
-    for (let moduleName in imports) {
-      newImports[moduleName] = this.wrapModuleImports(imports[moduleName]);
-    }
-
-    return newImports;
+    return proxyGet(imports, moduleImports =>
+      this.wrapModuleImports(moduleImports)
+    );
   }
 
   wrapExportFn(fn) {

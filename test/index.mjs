@@ -33,7 +33,7 @@ const importObject = {
   }
 };
 
-async function runWithWat(path) {
+async function runTest(name, path, importObject) {
   const src = await fsp.readFile(
     fileURLToPath(`${import.meta.url}/../${path}`),
     'utf-8'
@@ -54,8 +54,22 @@ async function runWithWat(path) {
   // Ensure that referential equality between exports is preserved for async wrappers.
   assert.strictEqual(run, run2);
 
-  console.log(`${path} - OK`);
+  console.log(`${name} - OK`);
 }
 
-runWithWat('mem-export.wat');
-runWithWat('mem-import.wat');
+runTest('Exported memory', 'mem-export.wat', importObject);
+runTest('Imported memory', 'mem-import.wat', importObject);
+
+function proxyGet(getter) {
+  return new Proxy(Object.create(null), {
+    get: (_, name) => getter(name)
+  });
+}
+
+runTest(
+  'Proxy-based imports',
+  'mem-export.wat',
+  proxyGet(moduleName =>
+    proxyGet(importName => importObject[moduleName][importName])
+  )
+);
