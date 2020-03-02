@@ -14,7 +14,18 @@
  * limitations under the License.
  */
 
+// Put `__asyncify_data` somewhere at the start.
+// This address is pretty hand-wavy and we might want to make it configurable in future.
+// See https://github.com/WebAssembly/binaryen/blob/6371cf63687c3f638b599e086ca668c04a26cbbb/src/passes/Asyncify.cpp#L106-L113
+// for structure details.
 const DATA_ADDR = 16;
+// Place actual data right after the descriptor (which is 2 * sizeof(i32) = 8 bytes).
+const DATA_START = DATA_ADDR + 8;
+// End data at 1024 bytes. This is where the unused area by Clang ends and real stack / data begins.
+// Because this might differ between languages and parameters passed to wasm-ld, ideally we would
+// use `__stack_pointer` here, but, sadly, it's not exposed via exports yet.
+const DATA_END = 1024;
+
 const WRAPPED_EXPORTS = new WeakMap();
 
 function isPromise(obj) {
@@ -154,9 +165,7 @@ class Asyncify {
 
     const memory = exports.memory || (imports.env && imports.env.memory);
 
-    const view = new Int32Array(memory.buffer, DATA_ADDR);
-    view[0] = DATA_ADDR + 8;
-    view[1] = 512;
+    new Int32Array(memory.buffer, DATA_ADDR).set([DATA_START, DATA_END]);
 
     this.state = { type: 'None' };
 
