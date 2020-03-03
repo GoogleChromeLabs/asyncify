@@ -25,13 +25,15 @@ process.on('unhandledRejection', err => {
   throw err;
 });
 
-const importObject = {
-  env: {
-    memory: new WebAssembly.Memory({ initial: 16 }),
-    get_time: Date.now,
-    sleep: promisify(setTimeout)
-  }
-};
+function getSimpleImportObject() {
+  return {
+    env: {
+      memory: new WebAssembly.Memory({ initial: 16 }),
+      get_time: Date.now,
+      sleep: promisify(setTimeout)
+    }
+  };
+}
 
 async function runTest(name, path, importObject, callback) {
   console.group(name);
@@ -67,13 +69,13 @@ async function simpleTestCb({ run, run2 }) {
   await runTest(
     'Exported memory',
     'mem-export.wat',
-    importObject,
+    getSimpleImportObject(),
     simpleTestCb
   );
   await runTest(
     'Imported memory',
     'mem-import.wat',
-    importObject,
+    getSimpleImportObject(),
     simpleTestCb
   );
 
@@ -83,14 +85,18 @@ async function simpleTestCb({ run, run2 }) {
     });
   }
 
-  await runTest(
-    'Proxy-based imports',
-    'mem-export.wat',
-    proxyGet(moduleName =>
-      proxyGet(importName => importObject[moduleName][importName])
-    ),
-    simpleTestCb
-  );
+  {
+    let realImportObject = getSimpleImportObject();
+
+    await runTest(
+      'Proxy-based imports',
+      'mem-export.wat',
+      proxyGet(moduleName =>
+        proxyGet(importName => realImportObject[moduleName][importName])
+      ),
+      simpleTestCb
+    );
+  }
 
   {
     let savedCallback;
@@ -112,4 +118,26 @@ async function simpleTestCb({ run, run2 }) {
       }
     );
   }
+
+  await runTest(
+    'Error handling',
+    'mem-export.wat',
+    {
+      env: {
+        ...getSimpleImportObject().env,
+        async sleep() {
+          throw new Error('Expected error');
+        }
+      }
+    },
+    async ({ run }) => {
+      for (let i = 0; i < 2; i++) {
+        await assert.rejects(run, {
+          name: 'Error',
+          message: 'Expected error',
+          stack: /^\s+at wasm-function\[2\]:/m
+        });
+      }
+    }
+  );
 })();
