@@ -48,34 +48,30 @@ class Asyncify {
     this.exports = null;
   }
 
-  invalidState() {
-    throw new Error(`Invalid async state ${this.state.type}`);
+  assertNoneState() {
+    if (this.state.type !== 'None') {
+      throw new Error(`Invalid async state ${this.state.type}`);
+    }
   }
 
   wrapImportFn(fn) {
     return (...args) => {
-      switch (this.state.type) {
-        case 'None': {
-          let value = fn(...args);
-          if (!isPromise(value)) {
-            return value;
-          }
-          this.exports.asyncify_start_unwind(DATA_ADDR);
-          this.state = {
-            type: 'Unwinding',
-            promise: value
-          };
-          return 0;
-        }
-        case 'Rewinding': {
-          let { value } = this.state;
-          this.state = { type: 'None' };
-          this.exports.asyncify_stop_rewind();
-          return value;
-        }
-        default:
-          this.invalidState();
+      if (this.state.type === 'Rewinding') {
+        let { value } = this.state;
+        this.state = { type: 'None' };
+        this.exports.asyncify_stop_rewind();
+        return value;
       }
+      this.assertNoneState();
+      let value = fn(...args);
+      if (!isPromise(value)) {
+        return value;
+      }
+      this.exports.asyncify_start_unwind(DATA_ADDR);
+      this.state = {
+        type: 'Unwinding',
+        promise: value
+      };
     };
   }
 
@@ -104,9 +100,7 @@ class Asyncify {
     }
 
     newExport = async (...args) => {
-      if (this.state.type !== 'None') {
-        this.invalidState();
-      }
+      this.assertNoneState();
 
       let result = fn(...args);
 
@@ -114,13 +108,8 @@ class Asyncify {
         let { promise } = this.state;
         this.state = { type: 'None' };
         this.exports.asyncify_stop_unwind();
-        this.state = { type: 'Waiting' };
-        let value;
-        try {
-          value = await promise;
-        } finally {
-          this.state = { type: 'None' };
-        }
+        let value = await promise;
+        this.assertNoneState();
         this.exports.asyncify_start_rewind(DATA_ADDR);
         this.state = {
           type: 'Rewinding',
@@ -129,9 +118,7 @@ class Asyncify {
         result = fn();
       }
 
-      if (this.state.type !== 'None') {
-        this.invalidState();
-      }
+      this.assertNoneState();
 
       return result;
     };
