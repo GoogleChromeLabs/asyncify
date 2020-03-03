@@ -1,0 +1,41 @@
+<script src="https://unpkg.com/binaryen@91.0.0/index.js"></script>
+<script type="module">
+import * as Asyncify from '../asyncify.mjs';
+
+const assert = {
+	strictEqual(a, b) {
+		if (a !== b) {
+			throw new Error('Assertion failed.');
+		}
+	}
+};
+
+const importObject = {
+  env: {
+    memory: new WebAssembly.Memory({ initial: 16 }),
+    get_time: Date.now,
+    sleep: ms => new Promise(resolve => setTimeout(resolve, ms)),
+  }
+};
+
+async function runWithWat(path) {
+  const src = await fetch(`${import.meta.url}/test/${path}`).then(res => res.text());
+
+  const binaryenModule = binaryen.parseText(src);
+  const wasmContents = binaryenModule.emitBinary();
+
+  const result = await Asyncify.instantiate(wasmContents, importObject);
+  const { run, run2 } = result.instance.exports;
+
+  // Check that the export works as an asynchronous function.
+  assert.strictEqual(await run(), 1);
+
+  // Ensure that referential equality between exports is preserved for async wrappers.
+  assert.strictEqual(run, run2);
+
+  console.log(`${path} - OK`);
+}
+
+runWithWat('mem-export.wat');
+// runWithWat('mem-import.wat');
+</script>

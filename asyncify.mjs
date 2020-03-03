@@ -14,200 +14,160 @@
  * limitations under the License.
  */
 
-const DATA_ADDR = 16;
-const WRAPPED_EXPORTS = new WeakMap();
+const { Module } = WebAssembly;
 
-function isPromise(obj) {
-  return (
-    !!obj &&
-    (typeof obj === 'object' || typeof obj === 'function') &&
-    typeof obj.then === 'function'
-  );
-}
+async function instantiateOffThread(module, imports = {}) {
+  let importIds = {};
+  let funcById = [];
+  let transferables = [];
 
-class Asyncify {
-  constructor() {
-    this.state = { type: 'Loading' };
-    this.exports = null;
-  }
-
-  invalidState() {
-    throw new Error(`Invalid async state ${this.state.type}`);
-  }
-
-  wrapImportFn(fn) {
-    return (...args) => {
-      switch (this.state.type) {
-        case 'None': {
-          let value = fn(...args);
-          if (!isPromise(value)) {
-            return value;
+  for (let desc of Module.imports(module)) {
+    let value = imports[desc.module][desc.name];
+    let handled = false;
+    switch (desc.kind) {
+      case 'function': {
+        if (typeof value === 'function') {
+          handled = true;
+          value = funcById.push(value) - 1;
+        }
+        break;
+      }
+      case 'global': {
+        if (value instanceof WebAssembly.Global) {
+          let innerValue = value.value;
+          try {
+            value.value = innerValue;
+          } catch {
+            // Only immutable values are supported.
+            handled = true;
+            value = innerValue;
           }
-          this.exports.asyncify_start_unwind(DATA_ADDR);
-          this.state = {
-            type: 'Unwinding',
-            promise: value
-          };
-          return 0;
+        } else {
+          handled = typeof value === 'number' || typeof value === 'bigint';
         }
-        case 'Rewinding': {
-          let { value } = this.state;
-          this.state = { type: 'None' };
-          this.exports.asyncify_stop_rewind();
-          return value;
+        break;
+      }
+      case 'memory': {
+        if (value instanceof WebAssembly.Memory) {
+          handled = true;
+          let { buffer } = value;
+          if (buffer instanceof ArrayBuffer) {
+            value = buffer;
+            transferables.push(buffer);
+          }
         }
+        break;
+      }
+    }
+    if (!handled) {
+      throw new TypeError(`Could not import ${desc.module}.${desc.name}: ${desc.kind}.`);
+    }
+    (importIds[desc.module] || (importIds[desc.module] = {}))[desc.name] = {
+      kind: desc.kind,
+      value
+    };
+  }
+
+  let worker = new Worker('./worker.js');
+
+  let sab = await new Promise((resolve, reject) => {
+    worker.onmessage = e => resolve(e.data);
+    worker.onerror = e => reject(e.error);
+    worker.postMessage({ module, imports: importIds });
+  });
+
+  let statusFuncIdAndCount = new Int32Array(sab, 0, 3);
+  let types = new Uint8Array(sab, 12, 1000);
+  let f64 = new Float64Array(sab, 1016, 1000);
+  let i64 = new BigInt64Array(sab, 9016, 1000);
+
+  worker.onerror = null;
+
+  worker.onmessage = async (event) => {
+    if (event.data !== null) return;
+    let func = funcById[statusFuncIdAndCount[1]];
+    let args = new Array(statusFuncIdAndCount[2]);
+    for (let i = 0; i < args.length; i++) {
+      switch (types[i]) {
+        case 0:
+          args[i] = f64[i];
+          break;
+        case 1:
+          args[i] = i64[i];
+          break;
         default:
-          this.invalidState();
+          throw new Error('unreachable');
       }
-    };
-  }
-
-  wrapModuleImports(module) {
-    let newModule = {};
-
-    for (let importName in module) {
-      let value = module[importName];
-      if (typeof value === 'function') {
-        value = this.wrapImportFn(value);
-      }
-      newModule[importName] = value;
     }
-
-    return newModule;
-  }
-
-  wrapImports(imports) {
-    if (imports === undefined) return;
-
-    let newImports = {};
-
-    for (let moduleName in imports) {
-      newImports[moduleName] = this.wrapModuleImports(imports[moduleName]);
+    let result = await func(...args);
+    switch (typeof result) {
+      case 'undefined': {
+        statusFuncIdAndCount[2] = 0;
+        break;
+      }
+      case 'number': {
+        statusFuncIdAndCount[2] = 1;
+        types[0] = 0;
+        f64[0] = result;
+        break;
+      }
+      case 'bigint': {
+        statusFuncIdAndCount[2] = 1;
+        types[0] = 1;
+        i64[0] = result;
+        break;
+      }
+      default: {
+        throw new Error(`Invalid return type of imported function.`);
+      }
     }
+    statusFuncIdAndCount[0] = 1;
+    Atomics.notify(statusFuncIdAndCount, 0, 1);
+  };
 
-    return newImports;
-  }
-
-  wrapExportFn(fn) {
-    let newExport = WRAPPED_EXPORTS.get(fn);
-
-    if (newExport !== undefined) {
-      return newExport;
-    }
-
-    newExport = async (...args) => {
-      if (this.state.type !== 'None') {
-        this.invalidState();
-      }
-
-      let result = fn(...args);
-
-      while (this.state.type === 'Unwinding') {
-        let { promise } = this.state;
-        this.state = { type: 'None' };
-        this.exports.asyncify_stop_unwind();
-        this.state = { type: 'Waiting' };
-        let value;
-        try {
-          value = await promise;
-        } finally {
-          this.state = { type: 'None' };
-        }
-        this.exports.asyncify_start_rewind(DATA_ADDR);
-        this.state = {
-          type: 'Rewinding',
-          value
-        };
-        result = fn();
-      }
-
-      if (this.state.type !== 'None') {
-        this.invalidState();
-      }
-
-      return result;
-    };
-
-    WRAPPED_EXPORTS.set(fn, newExport);
-
-    return newExport;
-  }
-
-  wrapExports(exports) {
-    let newExports = WRAPPED_EXPORTS.get(exports);
-
-    if (newExports !== undefined) {
-      return newExports;
-    }
-
-    newExports = Object.create(null);
-
-    for (let exportName in exports) {
-      let value = exports[exportName];
-      if (typeof value === 'function' && !exportName.startsWith('asyncify_')) {
-        value = this.wrapExportFn(value);
-      }
-      Object.defineProperty(newExports, exportName, {
-        enumerable: true,
-        value
+  let exports = Object.create(null);
+  for (let [id, desc] of Module.exports(module).entries()) {
+    if (desc.kind === 'function') {
+      exports[desc.name] = (...args) => new Promise((resolve, reject) => {
+        worker.addEventListener('message', function handler({ data }) {
+          if (data !== null) {
+            worker.removeEventListener('message', handler);
+            worker.onerror = null;
+            resolve(data);
+          }
+        });
+        worker.onerror = event => reject(event.error);
+        worker.postMessage({ funcId: id, args });
       });
+    } else {
+      console.warn(`Exporting ${desc.name}: ${desc.kind} is currently not supported.`);
     }
-
-    WRAPPED_EXPORTS.set(exports, newExports);
-
-    return newExports;
   }
-
-  init(instance, imports) {
-    const { exports } = instance;
-
-    const memory = exports.memory || (imports.env && imports.env.memory);
-
-    const view = new Int32Array(memory.buffer, DATA_ADDR);
-    view[0] = DATA_ADDR + 8;
-    view[1] = 512;
-
-    this.state = { type: 'None' };
-
-    this.exports = this.wrapExports(exports);
-
-    Object.setPrototypeOf(instance, Instance.prototype);
-  }
+  return Object.create(Instance.prototype, {
+    exports: {
+      enumerable: true,
+      value: exports
+    }
+  });
 }
 
-export class Instance extends WebAssembly.Instance {
-  constructor(module, imports) {
-    let state = new Asyncify();
-    super(module, state.wrapImports(imports));
-    state.init(this, imports);
-  }
-
-  get exports() {
-    return WRAPPED_EXPORTS.get(super.exports);
+export class Instance {
+  constructor() {
+    throw new Error('Synchronous instantiation is not supported.');
   }
 }
-
-Object.defineProperty(Instance.prototype, 'exports', { enumerable: true });
 
 export async function instantiate(source, imports) {
-  let state = new Asyncify();
-  let result = await WebAssembly.instantiate(
-    source,
-    state.wrapImports(imports)
-  );
-  state.init(
-    result instanceof WebAssembly.Instance ? result : result.instance,
-    imports
-  );
-  return result;
+  if (!(source instanceof Module)) {
+    let module = await WebAssembly.compile(source);
+    let instance = await instantiateOffThread(module, imports);
+    return { module, instance };
+  }
+  return instantiateOffThread(source, imports);
 }
 
 export async function instantiateStreaming(source, imports) {
-  let state = new Asyncify();
-  let result = await WebAssembly.instantiateStreaming(
-    source,
-    state.wrapImports(imports)
-  );
-  state.init(result.instance, imports);
-  return result;
+  let module = await WebAssembly.compileStreaming(source);
+  let instance = await instantiateOffThread(module, imports);
+  return { module, instance };
 }
