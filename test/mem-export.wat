@@ -8,9 +8,7 @@
     (call $env.sleep
       (i32.const 100))
     (i32.gt_u
-      (i32.sub
-        (call $env.get_time)
-        (local.get $start))
-      (i32.const 100)))
+      (call $env.get_time)
+      (local.get $start)))
   (export "run2" (func $run))
   (memory $memory (export "memory") 16))
