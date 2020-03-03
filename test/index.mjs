@@ -33,7 +33,9 @@ const importObject = {
   }
 };
 
-async function runTest(name, path, importObject) {
+async function runTest(name, path, importObject, callback) {
+  console.group(name);
+
   const src = await fsp.readFile(
     fileURLToPath(`${import.meta.url}/../${path}`),
     'utf-8'
@@ -46,30 +48,47 @@ async function runTest(name, path, importObject) {
   const wasmContents = binaryenModule.emitBinary();
 
   const wasmModule = new WebAssembly.Module(wasmContents);
-  const { run, run2 } = new Asyncify.Instance(wasmModule, importObject).exports;
+  await callback(new Asyncify.Instance(wasmModule, importObject).exports);
 
+  console.log('Test passed.');
+
+  console.groupEnd(name);
+}
+
+async function simpleTestCb({ run, run2 }) {
   // Check that the export works as an asynchronous function.
   assert.strictEqual(await run(), 1);
 
   // Ensure that referential equality between exports is preserved for async wrappers.
   assert.strictEqual(run, run2);
-
-  console.log(`${name} - OK`);
 }
 
-runTest('Exported memory', 'mem-export.wat', importObject);
-runTest('Imported memory', 'mem-import.wat', importObject);
+(async () => {
+  await runTest(
+    'Exported memory',
+    'mem-export.wat',
+    importObject,
+    simpleTestCb
+  );
+  await runTest(
+    'Imported memory',
+    'mem-import.wat',
+    importObject,
+    simpleTestCb
+  );
 
-function proxyGet(getter) {
-  return new Proxy(Object.create(null), {
-    get: (_, name) => getter(name)
-  });
-}
+  function proxyGet(getter) {
+    return new Proxy(Object.create(null), {
+      get: (_, name) => getter(name)
+    });
+  }
 
-runTest(
-  'Proxy-based imports',
-  'mem-export.wat',
-  proxyGet(moduleName =>
-    proxyGet(importName => importObject[moduleName][importName])
-  )
-);
+  await runTest(
+    'Proxy-based imports',
+    'mem-export.wat',
+    proxyGet(moduleName =>
+      proxyGet(importName => importObject[moduleName][importName])
+    ),
+    simpleTestCb
+  );
+})();
