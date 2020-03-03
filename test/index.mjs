@@ -91,4 +91,25 @@ async function simpleTestCb({ run, run2 }) {
     ),
     simpleTestCb
   );
+
+  {
+    let savedCallback;
+
+    await runTest(
+      'Re-entrance',
+      'callback.wat',
+      {
+        env: {
+          async call_main(counter) {
+            await Promise.resolve();
+            await savedCallback(counter);
+          }
+        }
+      },
+      async ({ callback }) => {
+        savedCallback = callback;
+        await callback(10);
+      }
+    );
+  }
 })();
