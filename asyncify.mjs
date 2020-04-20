@@ -60,7 +60,9 @@ async function instantiateOffThread(module, imports = {}) {
       }
     }
     if (!handled) {
-      throw new TypeError(`Could not import ${desc.module}.${desc.name}: ${desc.kind}.`);
+      throw new TypeError(
+        `Could not import ${desc.module}.${desc.name}: ${desc.kind}.`
+      );
     }
     (importIds[desc.module] || (importIds[desc.module] = {}))[desc.name] = {
       kind: desc.kind,
@@ -83,7 +85,7 @@ async function instantiateOffThread(module, imports = {}) {
 
   worker.onerror = null;
 
-  worker.onmessage = async (event) => {
+  worker.onmessage = async event => {
     if (event.data !== null) return;
     let func = funcById[statusFuncIdAndCount[1]];
     let args = new Array(statusFuncIdAndCount[2]);
@@ -128,19 +130,22 @@ async function instantiateOffThread(module, imports = {}) {
   let exports = Object.create(null);
   for (let [id, desc] of Module.exports(module).entries()) {
     if (desc.kind === 'function') {
-      exports[desc.name] = (...args) => new Promise((resolve, reject) => {
-        worker.addEventListener('message', function handler({ data }) {
-          if (data !== null) {
-            worker.removeEventListener('message', handler);
-            worker.onerror = null;
-            resolve(data);
-          }
+      exports[desc.name] = (...args) =>
+        new Promise((resolve, reject) => {
+          worker.addEventListener('message', function handler({ data }) {
+            if (data !== null) {
+              worker.removeEventListener('message', handler);
+              worker.onerror = null;
+              resolve(data);
+            }
+          });
+          worker.onerror = event => reject(event.error);
+          worker.postMessage({ funcId: id, args });
         });
-        worker.onerror = event => reject(event.error);
-        worker.postMessage({ funcId: id, args });
-      });
     } else {
-      console.warn(`Exporting ${desc.name}: ${desc.kind} is currently not supported.`);
+      console.warn(
+        `Exporting ${desc.name}: ${desc.kind} is currently not supported.`
+      );
     }
   }
   return Object.create(Instance.prototype, {
