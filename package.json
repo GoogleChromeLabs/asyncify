@@ -17,7 +17,8 @@
     "url": "git+https://github.com/GoogleChromeLabs/asyncify.git"
   },
   "files": [
-    "dist/asyncify.*"
+    "dist/asyncify.*",
+    "index.d.ts"
   ],
   "keywords": [
     "asyncify",
