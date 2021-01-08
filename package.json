@@ -1,6 +1,6 @@
 {
   "name": "asyncify-wasm",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "Standalone Asyncify helper for Binaryen",
   "main": "dist/asyncify.cjs",
   "module": "dist/asyncify.mjs",
