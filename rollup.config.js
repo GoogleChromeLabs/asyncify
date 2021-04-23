@@ -18,7 +18,13 @@ import { terser } from 'rollup-plugin-terser';
 
 export default {
   input: 'asyncify.mjs',
-  plugins: [terser()],
+  plugins: [
+    terser({
+      compress: {
+        passes: 2
+      }
+    })
+  ],
   output: [
     {
       format: 'cjs',

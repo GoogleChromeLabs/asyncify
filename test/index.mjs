@@ -35,7 +35,7 @@ function getSimpleImportObject() {
   };
 }
 
-async function runTest(name, path, importObject, callback) {
+async function runDelayedTest(name, path, importObject, callback) {
   console.group(name);
 
   const src = await fsp.readFile(
@@ -50,11 +50,17 @@ async function runTest(name, path, importObject, callback) {
   const wasmContents = binaryenModule.emitBinary();
 
   const wasmModule = new WebAssembly.Module(wasmContents);
-  await callback(new Asyncify.Instance(wasmModule, importObject).exports);
+  await callback(() => new Asyncify.Instance(wasmModule, importObject).exports);
 
   console.log('Test passed.');
 
-  console.groupEnd(name);
+  console.groupEnd();
+}
+
+async function runTest(name, path, importObject, callback) {
+  return runDelayedTest(name, path, importObject, getExports =>
+    callback(getExports())
+  );
 }
 
 async function simpleTestCb({ run, run2 }) {
@@ -135,9 +141,21 @@ async function simpleTestCb({ run, run2 }) {
         await assert.rejects(run, {
           name: 'Error',
           message: 'Expected error',
-          stack: /^\s+at wasm-function\[2\]:/m
+          stack: /:wasm-function\[2\]:/m
         });
       }
     }
+  );
+
+  await runDelayedTest(
+    'Error handling for missing import module',
+    'mem-export.wat',
+    {},
+    getExports =>
+      assert.throws(getExports, {
+        name: 'LinkError',
+        message:
+          'WebAssembly.Instance(): Import #0 module="env" function="get_time" error: function import requires a callable'
+      })
   );
 })();

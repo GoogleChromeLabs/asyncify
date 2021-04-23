@@ -28,6 +28,12 @@ const DATA_END = 1024;
 
 const WRAPPED_EXPORTS = new WeakMap();
 
+const State = {
+  None: 0,
+  Unwinding: 1,
+  Rewinding: 2
+};
+
 function isPromise(obj) {
   return (
     !!obj &&
@@ -44,23 +50,26 @@ function proxyGet(obj, transform) {
 
 class Asyncify {
   constructor() {
-    this.state = { type: 'Loading' };
+    this.value = undefined;
     this.exports = null;
   }
 
+  getState() {
+    return this.exports.asyncify_get_state();
+  }
+
   assertNoneState() {
-    if (this.state.type !== 'None') {
-      throw new Error(`Invalid async state ${this.state.type}`);
+    let state = this.getState();
+    if (state !== State.None) {
+      throw new Error(`Invalid async state ${state}, expected 0.`);
     }
   }
 
   wrapImportFn(fn) {
     return (...args) => {
-      if (this.state.type === 'Rewinding') {
-        let { value } = this.state;
-        this.state = { type: 'None' };
+      if (this.getState() === State.Rewinding) {
         this.exports.asyncify_stop_rewind();
-        return value;
+        return this.value;
       }
       this.assertNoneState();
       let value = fn(...args);
@@ -68,10 +77,7 @@ class Asyncify {
         return value;
       }
       this.exports.asyncify_start_unwind(DATA_ADDR);
-      this.state = {
-        type: 'Unwinding',
-        promise: value
-      };
+      this.value = value;
     };
   }
 
@@ -87,7 +93,7 @@ class Asyncify {
   wrapImports(imports) {
     if (imports === undefined) return;
 
-    return proxyGet(imports, moduleImports =>
+    return proxyGet(imports, (moduleImports = Object.create(null)) =>
       this.wrapModuleImports(moduleImports)
     );
   }
@@ -104,17 +110,11 @@ class Asyncify {
 
       let result = fn(...args);
 
-      while (this.state.type === 'Unwinding') {
-        let { promise } = this.state;
-        this.state = { type: 'None' };
+      while (this.getState() === State.Unwinding) {
         this.exports.asyncify_stop_unwind();
-        let value = await promise;
+        this.value = await this.value;
         this.assertNoneState();
         this.exports.asyncify_start_rewind(DATA_ADDR);
-        this.state = {
-          type: 'Rewinding',
-          value
-        };
         result = fn();
       }
 
@@ -153,8 +153,6 @@ class Asyncify {
     const memory = exports.memory || (imports.env && imports.env.memory);
 
     new Int32Array(memory.buffer, DATA_ADDR).set([DATA_START, DATA_END]);
-
-    this.state = { type: 'None' };
 
     this.exports = this.wrapExports(exports);
 
