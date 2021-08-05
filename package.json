@@ -8,7 +8,7 @@
     "example": "example"
   },
   "scripts": {
-    "prepublish": "rollup -c",
+    "prepublishOnly": "rollup -c",
     "example": "node --experimental-modules --no-warnings example/node/index.mjs",
     "test": "node --experimental-modules --no-warnings test/index.mjs"
   },
