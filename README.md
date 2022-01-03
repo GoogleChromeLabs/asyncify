@@ -2,7 +2,7 @@
 
 This is a JavaScript wrapper intended to be used with Asyncify feature of Binaryen.
 
-Together, they allow to use asynchronous APIs (such as most Web APIs) from within WebAssembly written and compiled from any source language.
+Together, they allow to use asynchronous APIs (such as most Web APIs) from within WebAssembly written and compiled from any source language. For a complete write up with examples, please refer to the [Asyncify article](https://web.dev/asyncify/) on web.dev.
 
 ## Usage
 
