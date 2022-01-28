@@ -14,18 +14,6 @@
  * limitations under the License.
  */
 
-// Put `__asyncify_data` somewhere at the start.
-// This address is pretty hand-wavy and we might want to make it configurable in future.
-// See https://github.com/WebAssembly/binaryen/blob/6371cf63687c3f638b599e086ca668c04a26cbbb/src/passes/Asyncify.cpp#L106-L113
-// for structure details.
-const DATA_ADDR = 16;
-// Place actual data right after the descriptor (which is 2 * sizeof(i32) = 8 bytes).
-const DATA_START = DATA_ADDR + 8;
-// End data at 1024 bytes. This is where the unused area by Clang ends and real stack / data begins.
-// Because this might differ between languages and parameters passed to wasm-ld, ideally we would
-// use `__stack_pointer` here, but, sadly, it's not exposed via exports yet.
-const DATA_END = 1024;
-
 const WRAPPED_EXPORTS = new WeakMap();
 
 const State = {
@@ -48,10 +36,31 @@ function proxyGet(obj, transform) {
   });
 }
 
-class Asyncify {
-  constructor() {
+export class Asyncify {
+  constructor({ dataBegin, dataEnd } = {}) {
     this.value = undefined;
     this.exports = null;
+
+    if (dataBegin !== undefined) {
+      if (dataEnd === undefined) {
+        throw new Error('Must provide dataEnd if dataBegin is provided')
+      }
+      if (!(dataEnd >= dataBegin + 8)) {
+        throw new Error('dataEnd must be >= dataBegin + 8')
+      }
+    }
+
+    // Put `__asyncify_data` somewhere at the start.
+    // The default address is pretty hand-wavy
+    // See https://github.com/WebAssembly/binaryen/blob/6371cf63687c3f638b599e086ca668c04a26cbbb/src/passes/Asyncify.cpp#L106-L113
+    // for structure details.
+    this.dataAddr = dataBegin ?? 16;
+    // Place actual data right after the descriptor (which is 2 * sizeof(i32) = 8 bytes).
+    this.dataStart = this.dataAddr + 8;
+    // End data at 1024 bytes. This is where the unused area by Clang ends and real stack / data begins.
+    // Because this might differ between languages and parameters passed to wasm-ld, ideally we would
+    // use `__stack_pointer` here, but, sadly, it's not exposed via exports yet.
+    this.dataEnd = dataEnd ?? 1024;
   }
 
   getState() {
@@ -76,7 +85,7 @@ class Asyncify {
       if (!isPromise(value)) {
         return value;
       }
-      this.exports.asyncify_start_unwind(DATA_ADDR);
+      this.exports.asyncify_start_unwind(this.dataAddr);
       this.value = value;
     };
   }
@@ -114,7 +123,7 @@ class Asyncify {
         this.exports.asyncify_stop_unwind();
         this.value = await this.value;
         this.assertNoneState();
-        this.exports.asyncify_start_rewind(DATA_ADDR);
+        this.exports.asyncify_start_rewind(this.dataAddr);
         result = fn();
       }
 
@@ -152,7 +161,7 @@ class Asyncify {
 
     const memory = exports.memory || (imports.env && imports.env.memory);
 
-    new Int32Array(memory.buffer, DATA_ADDR).set([DATA_START, DATA_END]);
+    new Int32Array(memory.buffer, this.dataAddr).set([this.dataStart, this.dataEnd]);
 
     this.exports = this.wrapExports(exports);
 
