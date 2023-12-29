@@ -115,7 +115,7 @@ class Asyncify {
         this.value = await this.value;
         this.assertNoneState();
         this.exports.asyncify_start_rewind(DATA_ADDR);
-        result = fn();
+        result = fn(...args);
       }
 
       this.assertNoneState();
