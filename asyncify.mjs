@@ -15,7 +15,9 @@
  */
 
 // Put `__asyncify_data` somewhere at the start.
-// This address is pretty hand-wavy and we might want to make it configurable in future.
+// This address is pretty hand-wavy, if the module exports a __asyncify_data symbol, we'll use that instead.
+// The DATA_START and DATA_END are only used if the data where __asyncify_data points at is all 0,
+// and the __stack_low and __stack_pointer symbols are not exported.
 // See https://github.com/WebAssembly/binaryen/blob/6371cf63687c3f638b599e086ca668c04a26cbbb/src/passes/Asyncify.cpp#L106-L113
 // for structure details.
 const DATA_ADDR = 16;
@@ -23,7 +25,7 @@ const DATA_ADDR = 16;
 const DATA_START = DATA_ADDR + 8;
 // End data at 1024 bytes. This is where the unused area by Clang ends and real stack / data begins.
 // Because this might differ between languages and parameters passed to wasm-ld, ideally we would
-// use `__stack_pointer` here, but, sadly, it's not exposed via exports yet.
+// use `__stack_pointer` here, but it's not exposed by default.
 const DATA_END = 1024;
 
 const WRAPPED_EXPORTS = new WeakMap();
@@ -52,6 +54,7 @@ class Asyncify {
   constructor() {
     this.value = undefined;
     this.exports = null;
+    this.update_stack_area = undefined;
   }
 
   getState() {
@@ -76,7 +79,8 @@ class Asyncify {
       if (!isPromise(value)) {
         return value;
       }
-      this.exports.asyncify_start_unwind(DATA_ADDR);
+      this.update_stack_area?.();
+      this.exports.asyncify_start_unwind(this.data_addr);
       this.value = value;
     };
   }
@@ -114,7 +118,7 @@ class Asyncify {
         this.exports.asyncify_stop_unwind();
         this.value = await this.value;
         this.assertNoneState();
-        this.exports.asyncify_start_rewind(DATA_ADDR);
+        this.exports.asyncify_start_rewind(this.data_addr);
         result = fn(...args);
       }
 
@@ -152,7 +156,21 @@ class Asyncify {
 
     const memory = exports.memory || (imports.env && imports.env.memory);
 
-    new Int32Array(memory.buffer, DATA_ADDR).set([DATA_START, DATA_END]);
+    // Allow the module to provide an area for saving the asyncify stack
+    if(exports.__asyncify_data){
+      this.data_addr = exports.__asyncify_data.value;
+    }else{
+      this.data_addr = DATA_ADDR;
+    }
+    const data_start_end = new Int32Array(memory.buffer, this.data_addr, 2);
+    if(!data_start_end[0] && !data_start_end[1]){
+      if(exports.__stack_low && exports.__stack_pointer){
+        data_start_end[0] = exports.__stack_low.value;
+        this.update_stack_area = ()=>{ data_start_end[1] = exports.__stack_pointer; };
+      }else{
+        data_start_end.set([DATA_START, DATA_END]);
+      }
+    }
 
     this.exports = this.wrapExports(exports);
 
